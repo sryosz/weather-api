@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 	"weatherapi/internal/models"
@@ -20,9 +20,10 @@ type WPoller struct {
 	longitude    float64
 	closeCh      chan struct{}
 	sender       Sender
+	log          *slog.Logger
 }
 
-func NewPoller(sender Sender, interval time.Duration, endpoint string, latitude, longitude float64) *WPoller {
+func NewPoller(log *slog.Logger, sender Sender, interval time.Duration, endpoint string, latitude, longitude float64) *WPoller {
 	return &WPoller{
 		endpoint:     endpoint,
 		pollInterval: interval,
@@ -30,25 +31,33 @@ func NewPoller(sender Sender, interval time.Duration, endpoint string, latitude,
 		longitude:    longitude,
 		closeCh:      make(chan struct{}),
 		sender:       sender,
+		log:          log,
 	}
 }
 
 func (wp *WPoller) Start() {
+	const op = "sender.Start"
+	log := wp.log.With("op", op)
+
 	ticker := time.NewTicker(wp.pollInterval)
+
+	log.Info("starting Weather Poller")
 
 	for {
 		select {
 		case <-ticker.C:
 			data, err := getWeatherResults(wp.endpoint, wp.latitude, wp.longitude)
 			if err != nil {
-				log.Fatal(err)
+				log.Error(err.Error())
+				return
 			}
 			err = wp.sender.Send(data)
 			if err != nil {
+				log.Error(err.Error())
 				return
 			}
 		case <-wp.closeCh:
-			fmt.Println("shutdown gracefully")
+			log.Info("shutdown gracefully")
 			return
 		}
 	}
@@ -56,7 +65,12 @@ func (wp *WPoller) Start() {
 }
 
 func (wp *WPoller) Close() {
+	const op = "sender.Close"
+	log := wp.log.With("op", op)
+
 	close(wp.closeCh)
+
+	log.Info("closed channel")
 }
 
 func getWeatherResults(endpoint string, lat, long float64) (*models.WeatherData, error) {
@@ -64,18 +78,18 @@ func getWeatherResults(endpoint string, lat, long float64) (*models.WeatherData,
 
 	req, err := http.NewRequest("GET", uri, nil)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	client := http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	var data models.WeatherData
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	return &data, nil

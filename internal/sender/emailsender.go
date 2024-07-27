@@ -2,7 +2,7 @@ package sender
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/smtp"
 	"weatherapi/internal/models"
 )
@@ -14,9 +14,10 @@ type EmailSender struct {
 	subject   string
 	host      string
 	port      string
+	log       *slog.Logger
 }
 
-func NewEmailSender(to, from, pass, subj, host, port string) *EmailSender {
+func NewEmailSender(log *slog.Logger, to, from, pass, subj, host, port string) *EmailSender {
 	return &EmailSender{
 		emailTo:   to,
 		emailFrom: from,
@@ -24,10 +25,14 @@ func NewEmailSender(to, from, pass, subj, host, port string) *EmailSender {
 		subject:   subj,
 		host:      host,
 		port:      port,
+		log:       log,
 	}
 }
 
 func (s *EmailSender) Send(data *models.WeatherData) error {
+	const op = "sender.Send"
+	log := s.log.With("op", op)
+
 	auth := smtp.PlainAuth("", s.emailFrom, s.password, s.host)
 
 	to := []string{s.emailTo}
@@ -35,9 +40,10 @@ func (s *EmailSender) Send(data *models.WeatherData) error {
 
 	err := smtp.SendMail(fmt.Sprintf("%s:%s", s.host, s.port), auth, s.emailFrom, to, msg)
 	if err != nil {
-		log.Println(err)
 		return err
 	}
+
+	log.Info(fmt.Sprintf("sent msg from %s to %s", s.emailFrom, s.emailTo))
 
 	return nil
 }

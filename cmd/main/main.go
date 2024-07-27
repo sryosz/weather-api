@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log/slog"
+	"os"
 	"weatherapi/internal/api"
 	"weatherapi/internal/config"
 	"weatherapi/internal/sender"
@@ -9,9 +11,11 @@ import (
 func main(){
 	cfg := config.MustLoad()
 
-	emailSender := sender.NewEmailSender(cfg.EmailTo, cfg.EmailFrom, cfg.Password, cfg.Subject, cfg.Host, cfg.Port)
+	log := setupLogger()
 
-	wp := api.NewPoller(emailSender, cfg.PollInterval, cfg.Endpoint, cfg.Latitude, cfg.Longitude)
+	emailSender := sender.NewEmailSender(log, cfg.EmailTo, cfg.EmailFrom, cfg.Password, cfg.Subject, cfg.Host, cfg.Port)
+
+	wp := api.NewPoller(log, emailSender, cfg.PollInterval, cfg.Endpoint, cfg.Latitude, cfg.Longitude)
 	go func() {
 		wp.Start()
 	}()
@@ -19,4 +23,8 @@ func main(){
 	select {
 
 	}
+}
+
+func setupLogger() *slog.Logger{
+	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 }
